@@ -1,5 +1,6 @@
-import { LocalStorage, getPreferenceValues } from "@raycast/api";
+import { LocalStorage, environment, getPreferenceValues } from "@raycast/api";
 import { uniqueNamesGenerator, adjectives, colors, animals } from "unique-names-generator";
+import fs from "fs";
 import axios from "axios";
 
 interface Auth {
@@ -135,4 +136,44 @@ export async function getMessage(id: string) {
     });
 
   return messagesRes.data;
+}
+
+export async function downloadMessage(url: string) {
+  const { token } = await getIdentity();
+
+  const dirPath = `${environment.supportPath}/temp/messages`;
+
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+  }
+
+  const filePath = `${dirPath}/${url.split("/")[2]}.eml`;
+  const file = fs.createWriteStream(filePath);
+
+  console.log(filePath);
+
+  const response = await axios
+    .get(`https://api.mail.tm${url}`, {
+      responseType: "stream",
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    .catch(async (e) => {
+      if (e.response.status == 401) await LocalStorage.removeItem("identity");
+      throw Error("Token Expired");
+    });
+
+  return new Promise((resolve, reject) => {
+    response.data.pipe(file);
+    let error = null;
+    file.on("error", (err) => {
+      error = err;
+      file.close();
+      reject(err);
+    });
+    file.on("close", () => {
+      if (!error) {
+        resolve(filePath);
+      }
+    });
+  });
 }
