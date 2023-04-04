@@ -1,4 +1,4 @@
-import { getMailboxData, newAuth, Preferences, downloadMessage } from "../lib/main";
+import { getMailboxData, newAuth, Preferences, downloadMessage, deleteEmail, createHTMLFile } from "../lib/main";
 import {
   Action,
   ActionPanel,
@@ -18,6 +18,12 @@ import Message from "./message";
 import { useCachedPromise, getAvatarIcon } from "@raycast/utils";
 import { useEffect, useState, useRef } from "react";
 import moment from "moment";
+
+enum EmailViewMedium {
+  MailApp,
+  Browser,
+  Finder,
+}
 
 // Returns the main React component for a view command
 export default function Command() {
@@ -62,12 +68,17 @@ export default function Command() {
   //   return () => clearInterval(updateTime);
   // }, []);
 
-  const downloadEmail = async (url: string, openInMail: boolean) => {
+  const downloadEmail = async (url: string, openIn: EmailViewMedium) => {
     try {
       const emailPath = await downloadMessage(url);
 
-      if (openInMail) open(emailPath as string);
-      else showInFinder(emailPath as string);
+      if (openIn == EmailViewMedium.MailApp) open(emailPath as string);
+      if (openIn == EmailViewMedium.Finder) showInFinder(emailPath as string);
+
+      if (openIn == EmailViewMedium.Browser) {
+        const htmlPath = await createHTMLFile(emailPath);
+        open(htmlPath);
+      }
     } catch (e) {
       if (e.message == "Token Expired") revalidate();
       else
@@ -76,6 +87,7 @@ export default function Command() {
           title: "Something went wrong",
           message: e.message,
         });
+      console.error(e);
     }
   };
 
@@ -137,10 +149,9 @@ export default function Command() {
                 <ActionPanel>
                   <Action
                     title="Generate a New Email"
-                    icon={{ source: Icon.CheckCircle }}
+                    icon={{ source: Icon.PlusCircle }}
                     onAction={() => confirmAlert(options)}
                   ></Action>
-                  <ActionPanel.Submenu title="Generate a New Email"></ActionPanel.Submenu>
                 </ActionPanel>
               }
             />
@@ -170,24 +181,55 @@ export default function Command() {
                   tooltip: "Subject",
                 },
                 { text: message.intro },
-                {
-                  tag: moment.duration(new Date(message.createdAt).getTime() - new Date().getTime()).humanize(true),
-                  tooltip: "Received",
-                },
+                message.seen
+                  ? {
+                      text: moment
+                        .duration(new Date(message.createdAt).getTime() - new Date().getTime())
+                        .humanize(true),
+                      tooltip: "Received",
+                    }
+                  : { tag: { value: "Unread", color: Color.Yellow }, tooltip: "New Email" },
               ]}
               actions={
                 <ActionPanel>
-                  <Action.Push title="View Email" icon={{ source: Icon.Eye }} target={<Message id={message.id} />} />
-                  <Action
-                    title="View in Mail App"
-                    icon={{ source: Icon.AppWindow }}
-                    onAction={() => downloadEmail(message.downloadUrl, true)}
-                  />
-                  <Action
-                    title="Download Email"
-                    icon={{ source: Icon.Download }}
-                    onAction={() => downloadEmail(message.downloadUrl, false)}
-                  />
+                  <ActionPanel.Section title="View">
+                    <Action.Push title="View Email" icon={{ source: Icon.Eye }} target={<Message id={message.id} />} />
+                    <Action
+                      title="View in Mail App"
+                      icon={{ source: Icon.AppWindow }}
+                      onAction={() => downloadEmail(message.downloadUrl, EmailViewMedium.MailApp)}
+                    />
+                    <Action
+                      title="View in Browser"
+                      icon={{ source: Icon.Globe }}
+                      onAction={() => downloadEmail(message.downloadUrl, EmailViewMedium.Browser)}
+                    />
+                    <Action
+                      title="Download Email"
+                      icon={{ source: Icon.Download }}
+                      onAction={() => downloadEmail(message.downloadUrl, EmailViewMedium.Finder)}
+                    />
+                  </ActionPanel.Section>
+                  <ActionPanel.Section title="Modify">
+                    <Action
+                      title="Delete Email"
+                      icon={{ source: Icon.Trash }}
+                      onAction={async () => {
+                        try {
+                          await deleteEmail(message.id);
+                        } catch (e) {
+                          showToast({
+                            style: Toast.Style.Failure,
+                            title: "Something went wrong",
+                            message: e.message,
+                          });
+                        } finally {
+                          revalidate();
+                        }
+                      }}
+                      style={Action.Style.Destructive}
+                    ></Action>
+                  </ActionPanel.Section>
                 </ActionPanel>
               }
             />
@@ -199,6 +241,17 @@ export default function Command() {
             subtitle="Messages will automatically appear here"
           />
         )}
+      </List.Section>
+      <List.Section title="">
+        <List.Item
+          title=""
+          actions={
+            <ActionPanel>
+              <Action.OpenInBrowser title="Mail.tm" url="https://mail.tm"></Action.OpenInBrowser>
+            </ActionPanel>
+          }
+          accessories={[{ text: "powered by " }, { tag: { value: "Mail.tm", color: Color.Blue }, icon: Icon.AtSymbol }]}
+        ></List.Item>
       </List.Section>
     </List>
   );

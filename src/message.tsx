@@ -1,11 +1,11 @@
 import TurndownService from "turndown";
-import { getMessage } from "../lib/main";
+import { downloadAttachment, getMessage } from "../lib/main";
 import { useRef } from "react";
 import { useCachedPromise } from "@raycast/utils";
-import { Action, ActionPanel, List, Icon, Detail, Color } from "@raycast/api";
+import { Action, ActionPanel, List, Icon, Detail, Color, showToast, Toast, Grid } from "@raycast/api";
 import moment from "moment";
 
-function fullscreenDetails(data): React.ReactNode {
+function FullscreenDetails(data): React.ReactNode {
   return (
     <List>
       <List.Section title="Received">
@@ -13,11 +13,17 @@ function fullscreenDetails(data): React.ReactNode {
           title={moment(data.createdAt).format("dddd, MMMM Do YYYY, h:mm:ss a")}
           accessories={[
             {
-              tag: {
-                value: moment.duration(new Date(data.createdAt).getTime() - new Date().getTime()).humanize(true),
-                color: Color.Orange,
-              },
+              tag: moment.duration(new Date(data.createdAt).getTime() - new Date().getTime()).humanize(true),
               icon: { source: Icon.Clock },
+            },
+            {
+              tag: {
+                value: `Auto deletes ${moment
+                  .duration(new Date(data.retentionDate).getTime() - new Date().getTime())
+                  .humanize(true)}`,
+                color: Color.Red,
+              },
+              icon: { source: Icon.Trash },
             },
           ]}
         ></List.Item>
@@ -44,82 +50,78 @@ function fullscreenDetails(data): React.ReactNode {
           }
         ></List.Item>
       </List.Section>
-      <List.Section title="To">
-        {data.to.map((to) => (
-          <List.Item
-            key={to.address}
-            title={to.address}
-            subtitle={to.name}
-            actions={
-              <ActionPanel>
-                <Action.CopyToClipboard
-                  title="Copy Email"
-                  icon={{ source: Icon.Envelope }}
-                  content={to.address}
-                ></Action.CopyToClipboard>
-                {to.name && (
+      {["to", "cc", "bcc"].map((recipientType) => (
+        <List.Section key={recipientType} title={recipientType.charAt(0).toUpperCase() + recipientType.slice(1)}>
+          {data[recipientType].map((recipient) => (
+            <List.Item
+              key={recipient.address}
+              title={recipient.address}
+              subtitle={recipient.name}
+              actions={
+                <ActionPanel>
                   <Action.CopyToClipboard
-                    title="Copy Name"
-                    icon={{ source: Icon.PersonCircle }}
-                    content={to.name}
+                    title="Copy Email"
+                    icon={{ source: Icon.Envelope }}
+                    content={recipient.address}
                   ></Action.CopyToClipboard>
-                )}
-              </ActionPanel>
-            }
-          ></List.Item>
-        ))}
-      </List.Section>
-      <List.Section title="Cc">
-        {data.cc.map((cc) => (
-          <List.Item
-            key={cc.address}
-            title={cc.address}
-            subtitle={cc.name}
-            actions={
-              <ActionPanel>
-                <Action.CopyToClipboard
-                  title="Copy Email"
-                  icon={{ source: Icon.Envelope }}
-                  content={cc.address}
-                ></Action.CopyToClipboard>
-                {cc.name && (
-                  <Action.CopyToClipboard
-                    title="Copy Name"
-                    icon={{ source: Icon.PersonCircle }}
-                    content={cc.name}
-                  ></Action.CopyToClipboard>
-                )}
-              </ActionPanel>
-            }
-          ></List.Item>
-        ))}
-      </List.Section>
-      <List.Section title="Bcc">
-        {data.bcc.map((bcc) => (
-          <List.Item
-            key={bcc.address}
-            title={bcc.address}
-            subtitle={bcc.name}
-            actions={
-              <ActionPanel>
-                <Action.CopyToClipboard
-                  title="Copy Email"
-                  icon={{ source: Icon.Envelope }}
-                  content={bcc.address}
-                ></Action.CopyToClipboard>
-                {bcc.name && (
-                  <Action.CopyToClipboard
-                    title="Copy Name"
-                    icon={{ source: Icon.PersonCircle }}
-                    content={bcc.name}
-                  ></Action.CopyToClipboard>
-                )}
-              </ActionPanel>
-            }
-          ></List.Item>
-        ))}
-      </List.Section>
+                  {recipient.name && (
+                    <Action.CopyToClipboard
+                      title="Copy Name"
+                      icon={{ source: Icon.PersonCircle }}
+                      content={recipient.name}
+                    ></Action.CopyToClipboard>
+                  )}
+                </ActionPanel>
+              }
+            ></List.Item>
+          ))}
+        </List.Section>
+      ))}
     </List>
+  );
+}
+
+function AttachmentItem({ attachment }) {
+  const abortable = useRef<AbortController>();
+  const { isLoading, data, revalidate } = useCachedPromise(downloadAttachment, [attachment], {
+    abortable,
+    onError: (e) => {
+      if (e.message == "Token Expired") revalidate();
+      else
+        showToast({
+          style: Toast.Style.Failure,
+          title: "Something went wrong",
+          message: e.message,
+        });
+    },
+  });
+
+  return (
+    <Grid.Item
+      title={attachment.filename}
+      content={data ? { fileIcon: data } : { source: Icon.Document }}
+      quickLook={data ? { path: data } : null}
+      actions={
+        <ActionPanel>
+          {data && (
+            <>
+              <Action.ToggleQuickLook title="Preview Attachment"></Action.ToggleQuickLook>
+              <Action.ShowInFinder title="View Attachment in Finder" path={data}></Action.ShowInFinder>
+            </>
+          )}
+        </ActionPanel>
+      }
+    ></Grid.Item>
+  );
+}
+
+function FullscreenAttachments(data): React.ReactNode {
+  return (
+    <Grid>
+      {data.attachments.map((attachment) => (
+        <AttachmentItem key={attachment.id} attachment={attachment}></AttachmentItem>
+      ))}
+    </Grid>
   );
 }
 
@@ -131,18 +133,20 @@ export default function Message({ id }) {
     abortable,
     onError: (e) => {
       if (e.message == "Token Expired") revalidate();
-      else throw e;
+      else
+        showToast({
+          style: Toast.Style.Failure,
+          title: "Something went wrong",
+          message: e.message,
+        });
     },
   });
-
-  console.log({ ...data, html: null });
-  console.log(data.attachments);
 
   const bodyHTML = data?.html[0].includes("<body")
     ? data?.html[0].slice(data.html[0].indexOf("<body"), data?.html[0].indexOf("</body>") + 7)
     : data?.html[0];
 
-  const bodyMarkdown = `# ${data?.subject ?? ""}\n---\n&nbsp;${turndownService.turndown(bodyHTML ?? "")}`;
+  const bodyMarkdown = `# ${data?.subject ?? ""}\n---\n&nbsp;&nbsp;${turndownService.turndown(bodyHTML ?? "")}`;
 
   return (
     <List isShowingDetail filtering={false} isLoading={isLoading}>
@@ -153,7 +157,14 @@ export default function Message({ id }) {
           subtitle="Retrieving message from server"
         />
       )}
-      {!isLoading && (
+      {!isLoading && !data && (
+        <List.Item
+          icon={{ source: Icon.ExclamationMark }}
+          title="Couldn't fetch messages"
+          subtitle="Failed to retrieve messages from server"
+        />
+      )}
+      {!isLoading && data && (
         <>
           <List.Item
             title="Email"
@@ -215,7 +226,7 @@ export default function Message({ id }) {
                     />
                     <List.Item.Detail.Metadata.Separator />
                     <List.Item.Detail.Metadata.Label
-                      title="Auto Deleted"
+                      title="Auto deletes"
                       text={moment
                         .duration(new Date(data.retentionDate).getTime() - new Date().getTime())
                         .humanize(true)}
@@ -226,38 +237,43 @@ export default function Message({ id }) {
             }
             actions={
               <ActionPanel>
-                <Action.Push title="View Fullscreen" target={fullscreenDetails(data)}></Action.Push>
+                <Action.Push title="View Fullscreen" target={FullscreenDetails(data)}></Action.Push>
               </ActionPanel>
             }
           />
-        </>
-      )}
-      {data.hasAttachments && (
-        <List.Item
-          title="Attachments"
-          accessories={[{ tag: { value: data.attachments.length.toString() }, icon: Icon.Paperclip }]}
-          detail={
-            <List.Item.Detail
-              metadata={
-                <List.Item.Detail.Metadata>
-                  {data.attachments.map((attachment, i) => (
-                    <List.Item.Detail.Metadata.TagList key={attachment.id} title={i == 0 ? "Attachment" : ""}>
-                      <List.Item.Detail.Metadata.TagList.Item
-                        text={attachment.filename}
-                        icon={{ source: Icon.Document }}
-                      />
-                      <List.Item.Detail.Metadata.TagList.Item
-                        text={attachment.contentType}
-                        icon={{ source: Icon.Tag }}
-                        color={Color.Green}
-                      />
-                    </List.Item.Detail.Metadata.TagList>
-                  ))}
-                </List.Item.Detail.Metadata>
+          {data.hasAttachments && (
+            <List.Item
+              title="Attachments"
+              accessories={[{ tag: { value: data.attachments.length.toString() }, icon: Icon.Paperclip }]}
+              detail={
+                <List.Item.Detail
+                  metadata={
+                    <List.Item.Detail.Metadata>
+                      {data.attachments.map((attachment, i) => (
+                        <List.Item.Detail.Metadata.TagList key={attachment.id} title={i == 0 ? "Attachment" : ""}>
+                          <List.Item.Detail.Metadata.TagList.Item
+                            text={attachment.filename}
+                            icon={{ source: Icon.Document }}
+                          />
+                          <List.Item.Detail.Metadata.TagList.Item
+                            text={attachment.contentType}
+                            icon={{ source: Icon.Tag }}
+                            color={Color.Green}
+                          />
+                        </List.Item.Detail.Metadata.TagList>
+                      ))}
+                    </List.Item.Detail.Metadata>
+                  }
+                />
               }
-            />
-          }
-        ></List.Item>
+              actions={
+                <ActionPanel>
+                  <Action.Push title="View Fullscreen" target={FullscreenAttachments(data)}></Action.Push>
+                </ActionPanel>
+              }
+            ></List.Item>
+          )}
+        </>
       )}
     </List>
   );

@@ -1,6 +1,7 @@
 import { LocalStorage, environment, getPreferenceValues } from "@raycast/api";
 import { uniqueNamesGenerator, adjectives, colors, animals } from "unique-names-generator";
 import fs from "fs";
+import EmlParser from "eml-parser";
 import axios from "axios";
 
 interface Auth {
@@ -123,6 +124,38 @@ export async function getMailboxData() {
   return { lastActive, currentAddress: auth.address, messages };
 }
 
+async function readEmail(id: string) {
+  const { token } = await getIdentity();
+
+  await axios
+    .patch(
+      `https://api.mail.tm/messages/${id}`,
+      {
+        seen: true,
+      },
+      {
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/merge-patch+json" },
+      }
+    )
+    .catch(async (e) => {
+      if (e.response.status == 401) await LocalStorage.removeItem("identity");
+      throw Error("Token Expired");
+    });
+}
+
+export async function deleteEmail(id: string) {
+  const { token } = await getIdentity();
+
+  await axios
+    .delete(`https://api.mail.tm/messages/${id}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    .catch(async (e) => {
+      if (e.response.status == 401) await LocalStorage.removeItem("identity");
+      throw Error("Token Expired");
+    });
+}
+
 export async function getMessage(id: string) {
   const { token } = await getIdentity();
 
@@ -135,25 +168,108 @@ export async function getMessage(id: string) {
       throw Error("Token Expired");
     });
 
+  if (!messagesRes.data.seen) await readEmail(id);
+
   return messagesRes.data;
 }
 
-export async function downloadMessage(url: string) {
+export async function createHTMLFile(emlPath: string) {
+  const htmlPath = emlPath.replaceAll("eml", "html");
+  const htmlDir = htmlPath
+    .split("/")
+    .splice(0, htmlPath.split("/").length - 1)
+    .join("/");
+
+  if (!fs.existsSync(htmlDir)) {
+    fs.mkdirSync(htmlDir, { recursive: true });
+  }
+
+  if (fs.existsSync(htmlPath)) {
+    return htmlPath;
+  }
+
+  const emlFile = fs.createReadStream(emlPath);
+  const htmlString = await new EmlParser(emlFile).getEmailAsHtml();
+
+  fs.writeFileSync(htmlPath, htmlString);
+
+  return htmlPath;
+}
+
+export async function downloadMessage(url: string): Promise<string> {
   const { token } = await getIdentity();
 
-  const dirPath = `${environment.supportPath}/temp/messages`;
+  const dirPath = `${environment.supportPath}/temp/eml`;
+  const filePath = `${dirPath}/${url.split("/")[2]}.eml`;
 
+  // create folder structure of `dirPath` if it doesn't exist
   if (!fs.existsSync(dirPath)) {
     fs.mkdirSync(dirPath, { recursive: true });
   }
 
-  const filePath = `${dirPath}/${url.split("/")[2]}.eml`;
-  const file = fs.createWriteStream(filePath);
+  // if attachment already exists return file path
+  if (fs.existsSync(filePath)) {
+    return filePath;
+  }
 
-  console.log(filePath);
+  const file = fs.createWriteStream(filePath);
 
   const response = await axios
     .get(`https://api.mail.tm${url}`, {
+      responseType: "stream",
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    .catch(async (e) => {
+      if (e.response.status == 401) await LocalStorage.removeItem("identity");
+      throw Error("Token Expired");
+    });
+
+  return new Promise((resolve, reject) => {
+    response.data.pipe(file);
+    let error = null;
+    file.on("error", (err) => {
+      error = err;
+      file.close();
+      reject(err);
+    });
+    file.on("close", () => {
+      if (!error) {
+        resolve(filePath);
+      }
+    });
+  });
+}
+
+export async function downloadAttachment({
+  downloadUrl,
+  filename,
+  id,
+  transferEncoding,
+}: {
+  downloadUrl: string;
+  filename: string;
+  id: string;
+  transferEncoding: string;
+}): Promise<string> {
+  const { token } = await getIdentity();
+
+  const dirPath = `${environment.supportPath}/temp/attachments/${id}`;
+  const filePath = `${dirPath}/${filename}`;
+
+  // create folder structure of `dirPath` if it doesn't exist
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+  }
+
+  // if attachment already exists return file path
+  if (fs.existsSync(filePath)) {
+    return filePath;
+  }
+
+  const file = fs.createWriteStream(filePath, { encoding: transferEncoding as BufferEncoding });
+
+  const response = await axios
+    .get(`https://api.mail.tm${downloadUrl}`, {
       responseType: "stream",
       headers: { Authorization: `Bearer ${token}` },
     })
