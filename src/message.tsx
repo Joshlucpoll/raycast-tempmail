@@ -1,9 +1,10 @@
 import TurndownService from "turndown";
 import { downloadAttachment, getMessage } from "../lib/main";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useCachedPromise } from "@raycast/utils";
-import { Action, ActionPanel, List, Icon, Detail, Color, showToast, Toast, Grid } from "@raycast/api";
+import { Action, ActionPanel, List, Icon, Detail, Color, showToast, Toast, Grid, environment } from "@raycast/api";
 import moment from "moment";
+import path from "path";
 
 function FullscreenDetails(data): React.ReactNode {
   return (
@@ -98,8 +99,14 @@ function AttachmentItem({ attachment }) {
 
   return (
     <Grid.Item
-      title={attachment.filename}
-      content={data ? { fileIcon: data } : { source: Icon.Document }}
+      title={isLoading ? "Loading file" : attachment.filename}
+      content={
+        data
+          ? attachment.contentType.includes("image")
+            ? { source: data }
+            : { fileIcon: data }
+          : { source: Icon.Document }
+      }
       quickLook={data ? { path: data } : null}
       actions={
         <ActionPanel>
@@ -131,6 +138,12 @@ export default function Message({ id }) {
   const abortable = useRef<AbortController>();
   const { isLoading, data, revalidate } = useCachedPromise(getMessage, [id], {
     abortable,
+    keepPreviousData: true,
+    onData: (data) => {
+      for (const attachment of data.attachments) {
+        downloadAttachment(attachment);
+      }
+    },
     onError: (e) => {
       if (e.message == "Token Expired") revalidate();
       else
@@ -146,7 +159,17 @@ export default function Message({ id }) {
     ? data?.html[0].slice(data.html[0].indexOf("<body"), data?.html[0].indexOf("</body>") + 7)
     : data?.html[0];
 
-  const bodyMarkdown = `# ${data?.subject ?? ""}\n---\n&nbsp;&nbsp;${turndownService.turndown(bodyHTML ?? "")}`;
+  let bodyMarkdown = `# ${data?.subject ?? ""}\n---\n&nbsp;&nbsp;${turndownService.turndown(bodyHTML ?? "")}`;
+
+  // replace inline attachments with images
+  const regex = /(attachment:ATTACH\d{1,6})/g;
+  bodyMarkdown = bodyMarkdown.replace(regex, (match, attachmentString) => {
+    // attachmentString will contain the entire "attachment:ATTACH" substring along with the number
+    const attachmentID = attachmentString.substring(11);
+    const attachment = data.attachments.find((attch) => attch.id == attachmentID);
+
+    return `${environment.supportPath}/temp/attachments/${attachment.id}_${attachment.filename}`.replace(" ", "%20");
+  });
 
   return (
     <List isShowingDetail filtering={false} isLoading={isLoading}>
@@ -250,11 +273,7 @@ export default function Message({ id }) {
                   metadata={
                     <List.Item.Detail.Metadata>
                       {data.attachments.map((attachment, i) => (
-                        <List.Item.Detail.Metadata.TagList key={attachment.id} title={i == 0 ? "Attachment" : ""}>
-                          <List.Item.Detail.Metadata.TagList.Item
-                            text={attachment.filename}
-                            icon={{ source: Icon.Document }}
-                          />
+                        <List.Item.Detail.Metadata.TagList key={attachment.id} title={attachment.filename}>
                           <List.Item.Detail.Metadata.TagList.Item
                             text={attachment.contentType}
                             icon={{ source: Icon.Tag }}

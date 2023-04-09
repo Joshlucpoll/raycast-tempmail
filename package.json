@@ -12,54 +12,17 @@
   "commands": [
     {
       "name": "tempmail",
-      "title": "TempMail",
+      "title": "Open TempMail",
       "subtitle": "Open temporary mailbox",
       "description": "",
-      "mode": "view",
-      "preferences": [
-        {
-          "name": "expiry_time",
-          "description": "Email will expiry (a new one will be generated) after a set period of inactivity. If set to \"Don't expire\", emails can only be regenerated manually",
-          "type": "dropdown",
-          "required": true,
-          "title": "Email Expiry Time",
-          "default": "10",
-          "data": [
-            {
-              "title": "Don't expire",
-              "value": "null"
-            },
-            {
-              "title": "5 minutes",
-              "value": "5"
-            },
-            {
-              "title": "10 minutes",
-              "value": "10"
-            },
-            {
-              "title": "30 minutes",
-              "value": "30"
-            },
-            {
-              "title": "1 hour",
-              "value": "60"
-            },
-            {
-              "title": "12 hour",
-              "value": "720"
-            },
-            {
-              "title": "1 day",
-              "value": "1440"
-            },
-            {
-              "title": "1 week",
-              "value": "10080"
-            }
-          ]
-        }
-      ]
+      "mode": "view"
+    },
+    {
+      "name": "reset",
+      "title": "Rest TempMail",
+      "subtitle": "Reset TempMail to default",
+      "description": "",
+      "mode": "view"
     }
   ],
   "dependencies": {
