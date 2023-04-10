@@ -238,15 +238,11 @@ export default function Command() {
                   actions={
                     <ActionPanel>
                       <Action.CopyToClipboard title="Copy Email Address to Clipboard" content={data.currentAddress} />
-                      <ActionPanel.Submenu title="Change Expiry" icon={{ source: Icon.Hourglass }}>
+                      <ActionPanel.Submenu title="Set Expiry..." icon={{ source: Icon.Hourglass }}>
                         {[null, 5, 10, 30, 60, 720, 1440, 10080].map((minutes) => (
                           <Action
                             key={minutes}
-                            title={
-                              minutes
-                                ? `Expires after ${moment.duration(minutes, "minutes").humanize()}`
-                                : "Never Expires"
-                            }
+                            title={minutes ? `${moment.duration(minutes, "minutes").humanize()}` : "Never"}
                             onAction={async () => {
                               await setNewExpiry(minutes);
                               await revalidate();

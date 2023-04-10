@@ -2,26 +2,25 @@
   "$schema": "https://www.raycast.com/schemas/extension.json",
   "name": "tempmail",
   "title": "TempMail",
-  "description": "10 minute mail using the mail.gw API",
+  "description": "Temporary mailbox using the mail.gw API",
   "icon": "command-icon.png",
   "author": "Joshlucpoll",
   "categories": [
+    "Applications",
     "Communication"
   ],
   "license": "MIT",
   "commands": [
     {
       "name": "tempmail",
-      "title": "Open TempMail",
-      "subtitle": "Open temporary mailbox",
-      "description": "",
+      "title": "Open Mailbox",
+      "description": "Open TempMail inbox to mange and view emails and addresses",
       "mode": "view"
     },
     {
       "name": "reset",
-      "title": "Rest TempMail",
-      "subtitle": "Reset TempMail to default",
-      "description": "",
+      "title": "Reset TempMail",
+      "description": "Resets TempMail to default settings",
       "mode": "view"
     }
   ],
