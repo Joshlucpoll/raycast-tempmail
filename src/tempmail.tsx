@@ -24,8 +24,13 @@ import {
   LocalStorage,
   useNavigation,
 } from "@raycast/api";
+<<<<<<< HEAD
 import MessageComponent from "./message";
 import { useCachedPromise, getAvatarIcon } from "@raycast/utils";
+=======
+import Message from "./message";
+import { useCachedPromise, getAvatarIcon, usePromise } from "@raycast/utils";
+>>>>>>> contributions/merge-1701276408790659000
 import { useEffect, useRef, useState } from "react";
 import moment from "moment";
 
@@ -43,7 +48,11 @@ interface FormValues {
 
 function NewCustomEmail({ update }) {
   const abortable = useRef<AbortController>();
+<<<<<<< HEAD
   const { isLoading, data, revalidate } = useCachedPromise(getDomains, [], {
+=======
+  const { isLoading, data, revalidate } = usePromise(getDomains, [], {
+>>>>>>> contributions/merge-1701276408790659000
     abortable,
     onError: (e) => {
       if (e.message == "Email Expired") revalidate();
@@ -310,7 +319,11 @@ export default function Command() {
                       <Action.Push
                         title="View Email"
                         icon={{ source: Icon.Eye }}
+<<<<<<< HEAD
                         target={MessageComponent({ id: message.id })}
+=======
+                        target={<Message id={message.id} />}
+>>>>>>> contributions/merge-1701276408790659000
                       />
                       <ActionPanel.Submenu title="View Email Externally" icon={{ source: Icon.Upload }}>
                         <Action
