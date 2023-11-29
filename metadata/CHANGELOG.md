@@ -1,5 +1,9 @@
 # TempMail Changelog
 
+## [Bug Fixes] - 2023-11-29
+
+- Changed Markdown translator to improve compatibility
+
 ## [Bug Fixes] - 2023-05-28
 
 - Fixed error with emails not showing
