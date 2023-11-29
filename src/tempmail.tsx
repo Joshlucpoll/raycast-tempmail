@@ -1,117 +1,149 @@
-import { getMessage, getMailboxData, newAuth, Preferences } from "../lib/main";
+import {
+  getMailboxData,
+  newAuth,
+  downloadMessage,
+  deleteEmail,
+  createHTMLFile,
+  setNewExpiry,
+  getDomains,
+  createCustomAuth,
+} from "../lib/main";
 import {
   Action,
   ActionPanel,
-  openCommandPreferences,
+  open,
   List,
   Icon,
   Alert,
   confirmAlert,
-  getPreferenceValues,
   showToast,
   Toast,
   Color,
+  showInFinder,
+  Form,
+  LocalStorage,
+  useNavigation,
 } from "@raycast/api";
-import { useCachedPromise, usePromise, getAvatarIcon } from "@raycast/utils";
-import { useEffect, useState, useRef } from "react";
+import Message from "./message";
+import { useCachedPromise, getAvatarIcon, usePromise } from "@raycast/utils";
+import { useEffect, useRef, useState } from "react";
 import moment from "moment";
-import TurndownService from "turndown";
 
-function Message({ id }) {
-  const turndownService = new TurndownService({ headingStyle: "atx" });
+enum EmailViewMedium {
+  MailApp,
+  Browser,
+  Finder,
+}
 
+interface FormValues {
+  username: string;
+  domain: string;
+  expiresNever: boolean;
+}
+
+function NewCustomEmail({ update }) {
   const abortable = useRef<AbortController>();
-  const { isLoading, data, revalidate } = usePromise(getMessage, [id], {
+  const { isLoading, data, revalidate } = usePromise(getDomains, [], {
     abortable,
     onError: (e) => {
-      if (e.message == "Token Expired") revalidate();
-      else throw e;
-    },
-    onData: (data) => {
-      // console.log(data.html[0]);
-      // console.log(data.html.indexOf("body"));
-      console.log(data.html[0].slice(data.html[0].indexOf("<body"), data.html[0].indexOf("</body>") + 7));
-      // console.log(
-      //   turndownService.turndown(
-      //     '<body dir="ltr"><h1>Hey there</h1><div>Minim aliquip fugiat esse laboris ipsum ullamco aute amet voluptate. Laboris ipsum aliquip deserunt ex exercitation sunt Lorem est reprehenderit. Voluptate eiusmod ut consequat velit. Sunt proident ea ea duis nostrud nulla. Velit elit ipsum exercitation velit aliquip tempor veniam voluptate id esse aute laborum. Tempor ad ea eiusmod exercitation qui veniam laboris anim quis.</div><div class="elementToProof" style="font-family: Calibri, Arial, Helvetica, sans-serif; font-size: 12pt; color: rgb(0, 0, 0); background-color: rgb(255, 255, 255);"><br></div><div class="elementToProof ContentPasted0" style="font-family: Calibri, Arial, Helvetica, sans-serif; font-size: 12pt; color: rgb(0, 0, 0); background-color: rgb(255, 255, 255);">'
-      //   )
-      // );
+      if (e.message == "Email Expired") revalidate();
+      else if (e.message == "Token Expired") revalidate();
+      else
+        showToast({
+          style: Toast.Style.Failure,
+          title: "Something went wrong",
+          message: e.message,
+        });
     },
   });
 
+  const [usernameError, setUsernameError] = useState<string | undefined>();
+  const { pop } = useNavigation();
+
   return (
-    <List isShowingDetail>
-      {!isLoading && (
-        <>
-          <List.Item
-            title="Body"
-            detail={
-              <List.Item.Detail
-                markdown={turndownService.turndown(
-                  data.html[0].slice(data.html[0].indexOf("<body"), data.html[0].indexOf("</body>") + 7)
-                )}
-              />
-            }
-          />
-          <List.Item
-            title="Subject"
-            subtitle={data.subject}
-            detail={
-              <List.Item.Detail
-                metadata={
-                  <List.Item.Detail.Metadata>
-                    <List.Item.Detail.Metadata.Label title="From" text={`${data.from.name} <${data.from.address}>`} />
-                    <List.Item.Detail.Metadata.Separator />
-                    {data.to.map((to, i) => (
-                      <List.Item.Detail.Metadata.Label
-                        key={to.address}
-                        title={i == 0 ? "To" : ""}
-                        text={`${to.name} <${to.address}>`}
-                      />
-                    ))}
-                    <List.Item.Detail.Metadata.Separator />
-                    {data.cc.map((cc, i) => (
-                      <List.Item.Detail.Metadata.Label
-                        key={cc.address}
-                        title={i == 0 ? "Cc" : ""}
-                        text={`${cc.name} <${cc.address}>`}
-                      />
-                    ))}
-                    <List.Item.Detail.Metadata.Separator />
-                    {data.bcc.map((bcc, i) => (
-                      <List.Item.Detail.Metadata.Label
-                        key={bcc.address}
-                        title={i == 0 ? "Bcc" : ""}
-                        text={`${bcc.name} <${bcc.address}>`}
-                      />
-                    ))}
-                    <List.Item.Detail.Metadata.Label title="" />
-                    <List.Item.Detail.Metadata.Label
-                      title="Received"
-                      text={moment(data.createdAt).format("dddd, MMMM Do YYYY, h:mm:ss a")}
-                    />
-                  </List.Item.Detail.Metadata>
+    <Form
+      actions={
+        <ActionPanel>
+          <Action.SubmitForm
+            title="Generate Custom Email"
+            icon={{ source: Icon.PlusCircle }}
+            onSubmit={async (values: FormValues) => {
+              if (values.username.length == 0) {
+                setUsernameError("Username should't be empty");
+                return;
+              }
+              if (values.username.includes(" ")) {
+                setUsernameError("Username cannot include spaces");
+                return;
+              }
+
+              try {
+                const res = await createCustomAuth(`${values.username}@${values.domain}`);
+                if (res == false) {
+                  setUsernameError("That username is already taken");
+                  return;
                 }
-              />
-            }
-          />
-        </>
-      )}
-    </List>
+
+                if (values.expiresNever) {
+                  await LocalStorage.setItem("expiry_time", null);
+                }
+                showToast({
+                  style: Toast.Style.Success,
+                  title: "Created New Email",
+                  message: `${values.username}@${values.domain} has been created`,
+                });
+
+                await update();
+                pop();
+              } catch (e) {
+                showToast({
+                  style: Toast.Style.Failure,
+                  title: "Something went wrong",
+                  message: e.message,
+                });
+              }
+            }}
+          ></Action.SubmitForm>
+        </ActionPanel>
+      }
+    >
+      <Form.TextField
+        id="username"
+        title="Username"
+        info="Create a unique username for your email address"
+        error={usernameError}
+        onChange={() => setUsernameError(undefined)}
+        onBlur={(event) => {
+          if (event.target.value?.length == 0) {
+            setUsernameError("Username should't be empty");
+          } else if (event.target.value?.includes(" ")) {
+            setUsernameError("Username cannot include spaces");
+          } else {
+            setUsernameError(undefined);
+          }
+        }}
+      ></Form.TextField>
+      <Form.Dropdown id="domain" title="Domain" info="Select an available domain from the list" isLoading={isLoading}>
+        {data &&
+          data["hydra:member"].map((domain) => (
+            <Form.Dropdown.Item key={domain.domain} title={domain.domain} value={domain.domain}></Form.Dropdown.Item>
+          ))}
+      </Form.Dropdown>
+      <Form.Description title="" text=""></Form.Description>
+      <Form.Checkbox id="expiry" title="Expiry" label="Expires never" defaultValue={true}></Form.Checkbox>
+    </Form>
   );
 }
 
 // Returns the main React component for a view command
-export default function Commad() {
-  const expiry_time = parseInt(getPreferenceValues<Preferences>().expiry_time);
-  const [expiresIn, setExpiresIn] = useState<string>();
-
+export default function Command() {
   const abortable = useRef<AbortController>();
-  const { isLoading, data, revalidate } = useCachedPromise(getMailboxData, [], {
+  const { isLoading, data, error, revalidate } = useCachedPromise(getMailboxData, [], {
     abortable,
     keepPreviousData: true,
     onError: (e) => {
-      if (e.message == "Token Expired") revalidate();
+      if (e.message == "Email Expired") revalidate();
+      else if (e.message == "Token Expired") revalidate();
       else
         showToast({
           style: Toast.Style.Failure,
@@ -122,27 +154,33 @@ export default function Commad() {
   });
 
   useEffect(() => {
-    if (isNaN(expiry_time)) {
-      setExpiresIn("Never");
-    } else {
-      const updateTime = setInterval(() => {
-        setExpiresIn(
-          "in " +
-            moment
-              .duration(expiry_time * 60000 - (new Date().getTime() - new Date(data.lastActive).getTime()))
-              .humanize()
-        );
-      }, 1000);
-      return () => clearInterval(updateTime);
-    }
-  }, [data]);
+    const updateTime = setInterval(() => {
+      revalidate();
+    }, 5000);
+    return () => clearInterval(updateTime);
+  }, []);
 
-  // useEffect(() => {
-  //   const updateTime = setInterval(() => {
-  //     revalidate();
-  //   }, 10000);
-  //   return () => clearInterval(updateTime);
-  // }, []);
+  const downloadEmail = async (url: string, openIn: EmailViewMedium) => {
+    try {
+      const emailPath = await downloadMessage(url);
+
+      if (openIn == EmailViewMedium.MailApp) open(emailPath as string);
+      if (openIn == EmailViewMedium.Finder) showInFinder(emailPath as string);
+
+      if (openIn == EmailViewMedium.Browser) {
+        const htmlPath = await createHTMLFile(emailPath);
+        open(htmlPath);
+      }
+    } catch (e) {
+      if (e.message == "Token Expired") revalidate();
+      else
+        showToast({
+          style: Toast.Style.Failure,
+          title: "Something went wrong",
+          message: e.message,
+        });
+    }
+  };
 
   const generateNewAddress = async () => {
     const toast = await showToast({
@@ -151,7 +189,7 @@ export default function Commad() {
     });
 
     await newAuth();
-    revalidate();
+    await revalidate();
 
     toast.style = Toast.Style.Success;
     toast.title = "Generated new email";
@@ -172,87 +210,176 @@ export default function Commad() {
   };
 
   return (
-    <List
-      filtering={false}
-      isLoading={isLoading}
-      actions={
-        <ActionPanel>
-          <Action title="Open Extension Preferences" onAction={openCommandPreferences} />
-        </ActionPanel>
-      }
-    >
-      <List.Section title="Current Address">
-        {isLoading && !data && <List.Item icon={{ source: Icon.CircleProgress }} title="Fetching address" />}
-        {data && (
-          <>
-            <List.Item
-              title={data.currentAddress}
-              icon={{ source: Icon.Envelope }}
-              accessories={[{ tag: expiresIn ? `Expires ${expiresIn}` : "" }]}
-              actions={
-                <ActionPanel>
-                  <Action.CopyToClipboard title="Copy Email Address to Clipboard" content={data.currentAddress} />
-                </ActionPanel>
-              }
-            />
-            <List.Item
-              title="Generate a New Email"
-              icon={{ source: Icon.PlusCircle }}
-              actions={
-                <ActionPanel>
-                  <Action
-                    title="Generate a New Email"
-                    icon={{ source: Icon.CheckCircle }}
-                    onAction={() => confirmAlert(options)}
-                  ></Action>
-                  <ActionPanel.Submenu title="Generate a New Email"></ActionPanel.Submenu>
-                </ActionPanel>
-              }
-            />
-          </>
-        )}
-      </List.Section>
-      <List.Section title="Messages Received">
-        {!isLoading &&
-          data &&
-          data.messages.map((message) => (
-            <List.Item
-              key={message.id}
-              id={message.id}
-              icon={getAvatarIcon(message.from.name)}
-              title={message.from.name}
-              // subtitle={message.intro}
-              accessories={[
-                {
-                  tag: { value: message.subject, color: Color.Blue },
-                  icon: { source: Icon.BullsEye },
-                  tooltip: "Subject",
-                },
-                { text: message.intro },
-                {
-                  text: {
-                    value: moment.duration(new Date(message.createdAt).getTime() - new Date().getTime()).humanize(true),
-                    color: Color.PrimaryText,
+    <List filtering={false} isLoading={isLoading}>
+      {error && error.message != "Email Expired" && (
+        <List.EmptyView
+          title="An Error Occurred. Trying Again"
+          description={error.message}
+          icon={{ source: Icon.XMarkCircle, tintColor: Color.Red }}
+        ></List.EmptyView>
+      )}
+      {error && error.message == "Email Expired" && (
+        <List.EmptyView
+          title="Previous Email Expired"
+          description="Generating a new one for you, hold tight!"
+          icon={{ source: Icon.Stars, tintColor: Color.Blue }}
+        ></List.EmptyView>
+      )}
+      {!error && (
+        <>
+          <List.Section title="Current Address">
+            {isLoading && !data && <List.Item icon={{ source: Icon.CircleProgress }} title="Fetching address" />}
+            {data && (
+              <>
+                <List.Item
+                  title={data.currentAddress}
+                  icon={{ source: Icon.Envelope }}
+                  accessories={[{ tag: data?.expiryMessage ?? "" }]}
+                  actions={
+                    <ActionPanel>
+                      <Action.CopyToClipboard title="Copy Email Address to Clipboard" content={data.currentAddress} />
+                      <ActionPanel.Submenu title="Set Expiry..." icon={{ source: Icon.Hourglass }}>
+                        {[null, 5, 10, 30, 60, 720, 1440, 10080].map((minutes) => (
+                          <Action
+                            key={minutes}
+                            title={minutes ? `${moment.duration(minutes, "minutes").humanize()}` : "Never"}
+                            onAction={async () => {
+                              await setNewExpiry(minutes);
+                              await revalidate();
+                            }}
+                          ></Action>
+                        ))}
+                      </ActionPanel.Submenu>
+                    </ActionPanel>
+                  }
+                />
+                <List.Item
+                  title="Generate a New Email"
+                  icon={{ source: Icon.PlusCircle }}
+                  actions={
+                    <ActionPanel>
+                      <Action
+                        title="Generate a Random New Email"
+                        icon={{ source: Icon.Center }}
+                        onAction={() => confirmAlert(options)}
+                      ></Action>
+                      <Action.Push
+                        title="Generate a Custom New Email"
+                        icon={{ source: Icon.PlusCircle }}
+                        target={<NewCustomEmail update={revalidate}></NewCustomEmail>}
+                      ></Action.Push>
+                    </ActionPanel>
+                  }
+                />
+              </>
+            )}
+          </List.Section>
+          <List.Section title="Messages Received">
+            {isLoading && !data && (
+              <List.Item
+                icon={{ source: Icon.CircleProgress }}
+                title="Loading Messages"
+                subtitle="Retrieving messages from server"
+              />
+            )}
+            {(data?.messages || []).map((message) => (
+              <List.Item
+                key={message.id}
+                id={message.id}
+                icon={getAvatarIcon(message.from.name)}
+                title={message.from.name}
+                accessories={[
+                  {
+                    tag: { value: message.subject, color: Color.Blue },
+                    icon: { source: Icon.BullsEye },
+                    tooltip: "Subject",
                   },
-                  tooltip: "Received",
-                },
-              ]}
-              actions={
-                <ActionPanel>
-                  <Action.Push title="View Email" target={<Message id={message.id} />} />
-                  {/* <Action title="Download Email" onAction={() => axios.}={`https://api.mail.tm${message.downloadUrl}`} /> */}
-                </ActionPanel>
-              }
-            />
-          ))}
-        {data?.messages?.length == 0 && (
-          <List.Item
-            icon={{ source: Icon.Ellipsis }}
-            title="Inbox Empty"
-            subtitle="Messages will automatically appear here"
-          />
-        )}
-      </List.Section>
+                  { text: message.intro },
+                  message.seen
+                    ? {
+                        text: moment
+                          .duration(new Date(message.createdAt).getTime() - new Date().getTime())
+                          .humanize(true),
+                        tooltip: "Received",
+                      }
+                    : { tag: { value: "Unread", color: Color.Yellow }, tooltip: "New Email" },
+                ]}
+                actions={
+                  <ActionPanel>
+                    <ActionPanel.Section title="View">
+                      <Action.Push
+                        title="View Email"
+                        icon={{ source: Icon.Eye }}
+                        target={<Message id={message.id} />}
+                      />
+                      <ActionPanel.Submenu title="View Email Externally" icon={{ source: Icon.Upload }}>
+                        <Action
+                          title="Mail App"
+                          icon={{ source: Icon.AppWindow }}
+                          onAction={() => downloadEmail(message.downloadUrl, EmailViewMedium.MailApp)}
+                        />
+                        <Action
+                          title="Browser"
+                          icon={{ source: Icon.Globe }}
+                          onAction={() => downloadEmail(message.downloadUrl, EmailViewMedium.Browser)}
+                        />
+                        <Action
+                          title="Download Email"
+                          icon={{ source: Icon.Download }}
+                          onAction={() => downloadEmail(message.downloadUrl, EmailViewMedium.Finder)}
+                        />
+                      </ActionPanel.Submenu>
+                    </ActionPanel.Section>
+                    <ActionPanel.Section title="Modify">
+                      <Action
+                        title="Delete Email"
+                        icon={{ source: Icon.Trash }}
+                        onAction={async () => {
+                          try {
+                            await deleteEmail(message.id);
+                          } catch (e) {
+                            showToast({
+                              style: Toast.Style.Failure,
+                              title: "Something went wrong",
+                              message: e.message,
+                            });
+                          } finally {
+                            await revalidate();
+                          }
+                        }}
+                        style={Action.Style.Destructive}
+                      ></Action>
+                    </ActionPanel.Section>
+                  </ActionPanel>
+                }
+              />
+            ))}
+            {data?.messages?.length == 0 && (
+              <List.Item
+                icon={{ source: Icon.Ellipsis, tintColor: Color.SecondaryText }}
+                title={"Inbox Empty"}
+                subtitle="Messages will automatically appear here"
+              />
+            )}
+          </List.Section>
+          <List.Section title="">
+            {data && (
+              <List.Item
+                title=""
+                actions={
+                  <ActionPanel>
+                    <Action.OpenInBrowser title="Mail.tm" url="https://mail.tm"></Action.OpenInBrowser>
+                  </ActionPanel>
+                }
+                accessories={[
+                  { text: "powered by " },
+                  { tag: { value: "Mail.tm", color: Color.Blue }, icon: Icon.AtSymbol },
+                ]}
+              ></List.Item>
+            )}
+          </List.Section>
+        </>
+      )}
     </List>
   );
 }

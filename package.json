@@ -2,71 +2,35 @@
   "$schema": "https://www.raycast.com/schemas/extension.json",
   "name": "tempmail",
   "title": "TempMail",
-  "description": "10 minute mail using the mail.gw API",
+  "description": "Temporary email mailbox using the mail.gw API",
   "icon": "command-icon.png",
   "author": "Joshlucpoll",
   "categories": [
+    "Applications",
     "Communication"
   ],
   "license": "MIT",
   "commands": [
     {
       "name": "tempmail",
-      "title": "TempMail",
-      "subtitle": "Open temporary mailbox",
-      "description": "",
-      "mode": "view",
-      "preferences": [
-        {
-          "name": "expiry_time",
-          "description": "Email will expiry (a new one will be generated) after a set period of inactivity. If set to \"Don't expire\", emails can only be regenerated manually",
-          "type": "dropdown",
-          "required": true,
-          "title": "Email Expiry Time",
-          "default": "10",
-          "data": [
-            {
-              "title": "Don't expire",
-              "value": "null"
-            },
-            {
-              "title": "5 minutes",
-              "value": "5"
-            },
-            {
-              "title": "10 minutes",
-              "value": "10"
-            },
-            {
-              "title": "30 minutes",
-              "value": "30"
-            },
-            {
-              "title": "1 hour",
-              "value": "60"
-            },
-            {
-              "title": "12 hour",
-              "value": "720"
-            },
-            {
-              "title": "1 day",
-              "value": "1440"
-            },
-            {
-              "title": "1 week",
-              "value": "10080"
-            }
-          ]
-        }
-      ]
+      "title": "Open Mailbox",
+      "description": "Open TempMail inbox to mange and view emails and addresses",
+      "mode": "view"
+    },
+    {
+      "name": "reset",
+      "title": "Reset TempMail",
+      "description": "Resets TempMail to default settings",
+      "mode": "view"
     }
   ],
   "dependencies": {
     "@raycast/api": "^1.48.9",
     "@raycast/utils": "^1.5.2",
     "axios": "^1.3.4",
+    "eml-parser": "^1.2.0",
     "moment": "^2.29.4",
+    "node-html-parser": "^6.1.5",
     "turndown": "^7.1.2",
     "unique-names-generator": "^4.7.1"
   },
