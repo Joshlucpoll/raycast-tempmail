@@ -152,7 +152,7 @@ async function getGetMessages(token: string, page = 1): Promise<Messages["hydra:
     return messages["hydra:member"];
 
   const additionMessages = await getGetMessages(token, page + 1);
-  return [...additionMessages, ...messages["hydra:member"]];
+  return [...messages["hydra:member"], ...additionMessages];
 }
 
 export async function getMailboxData() {
@@ -171,21 +171,22 @@ export async function getMailboxData() {
     }
   }
 
-  let identity: Identity;
+  let identity = await getIdentity();
+
+  const expiryTime = (await LocalStorage.getItem("expiry_time")) as number | null;
+  const auth: Auth = await getAuth();
+
+  let messages: Messages["hydra:member"];
   try {
-    identity = await getIdentity();
+    messages = await getGetMessages(identity.token);
   } catch (e) {
     if (e.message === "Token Expired") {
       identity = await getIdentity();
+      messages = await getGetMessages(identity.token);
     } else {
       throw e;
     }
   }
-  const { token } = identity;
-
-  const expiryTime = (await LocalStorage.getItem("expiry_time")) as number | null;
-  const auth: Auth = await getAuth();
-  const messages = await getGetMessages(token);
 
   const expiryMessage = expiryTime
     ? `Expires after ${moment.duration(expiryTime * 60000).humanize()}`
