@@ -1,7 +1,6 @@
 import { LocalStorage, environment } from "@raycast/api";
 import { uniqueNamesGenerator, adjectives, colors, animals } from "unique-names-generator";
 import fs from "fs";
-import EmlParser from "eml-parser";
 import axios, { AxiosResponse } from "axios";
 import moment from "moment";
 import { Auth, Domains, Identity, Message, Messages } from "./types";
@@ -245,12 +244,9 @@ export async function getMessage(id: string): Promise<Message> {
   return message;
 }
 
-export async function createHTMLFile(emlPath: string): Promise<string> {
-  const htmlPath = emlPath.replaceAll("eml", "html");
-  const htmlDir = htmlPath
-    .split("/")
-    .splice(0, htmlPath.split("/").length - 1)
-    .join("/");
+export async function createHTMLFile(id: string, html: string[]): Promise<string> {
+  const htmlDir = `${environment.supportPath}/temp/html`;
+  const htmlPath = `${htmlDir}/${id}.html`;
 
   if (!fs.existsSync(htmlDir)) {
     fs.mkdirSync(htmlDir, { recursive: true });
@@ -260,11 +256,7 @@ export async function createHTMLFile(emlPath: string): Promise<string> {
     return htmlPath;
   }
 
-  const emlFile = fs.createReadStream(emlPath);
-  const htmlString = await new EmlParser(emlFile).getEmailAsHtml();
-
-  fs.writeFileSync(htmlPath, htmlString);
-
+  fs.writeFileSync(htmlPath, html.join(""));
   return htmlPath;
 }
 

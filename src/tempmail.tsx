@@ -7,6 +7,7 @@ import {
   setNewExpiry,
   getDomains,
   createCustomAuth,
+  getMessage,
 } from "../lib/main";
 import {
   Action,
@@ -158,17 +159,18 @@ export default function Command() {
     return () => clearInterval(updateTime);
   }, []);
 
-  const downloadEmail = async (url: string, openIn: EmailViewMedium) => {
+  const downloadEmail = async (id: string, url: string, openIn: EmailViewMedium) => {
     try {
-      const emailPath = await downloadMessage(url);
+      if (openIn == EmailViewMedium.Browser) {
+        const message = await getMessage(id);
+        const htmlPath = await createHTMLFile(id, message.html);
+        open(htmlPath);
+        return;
+      }
 
+      const emailPath = await downloadMessage(url);
       if (openIn == EmailViewMedium.MailApp) open(emailPath as string);
       if (openIn == EmailViewMedium.Finder) showInFinder(emailPath as string);
-
-      if (openIn == EmailViewMedium.Browser) {
-        const htmlPath = await createHTMLFile(emailPath);
-        open(htmlPath);
-      }
     } catch (e) {
       showToast({
         style: Toast.Style.Failure,
@@ -312,17 +314,17 @@ export default function Command() {
                         <Action
                           title="Mail App"
                           icon={{ source: Icon.AppWindow }}
-                          onAction={() => downloadEmail(message.downloadUrl, EmailViewMedium.MailApp)}
+                          onAction={() => downloadEmail(message.id, message.downloadUrl, EmailViewMedium.MailApp)}
                         />
                         <Action
                           title="Browser"
                           icon={{ source: Icon.Globe }}
-                          onAction={() => downloadEmail(message.downloadUrl, EmailViewMedium.Browser)}
+                          onAction={() => downloadEmail(message.id, message.downloadUrl, EmailViewMedium.Browser)}
                         />
                         <Action
                           title="Download Email"
                           icon={{ source: Icon.Download }}
-                          onAction={() => downloadEmail(message.downloadUrl, EmailViewMedium.Finder)}
+                          onAction={() => downloadEmail(message.id, message.downloadUrl, EmailViewMedium.Finder)}
                         />
                       </ActionPanel.Submenu>
                     </ActionPanel.Section>
@@ -364,7 +366,7 @@ export default function Command() {
                 title=""
                 actions={
                   <ActionPanel>
-                    <Action.OpenInBrowser title="Mail.tm" url="https://mail.tm"></Action.OpenInBrowser>
+                    <Action.OpenInBrowser title="Open Mail.tm" url="https://mail.tm"></Action.OpenInBrowser>
                   </ActionPanel>
                 }
                 accessories={[

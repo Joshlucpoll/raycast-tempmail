@@ -25,7 +25,7 @@ enum EmailViewMedium {
   Finder,
 }
 
-function FullscreenDetails(data: Message): React.ReactNode {
+function FullscreenDetails(data: Message): JSX.Element {
   return (
     <List>
       <List.Section title="Received">
@@ -139,7 +139,7 @@ function AttachmentItem({ attachment }) {
   );
 }
 
-function FullscreenAttachments(data): React.ReactNode {
+function FullscreenAttachments(data): JSX.Element {
   return (
     <Grid>
       {data.attachments.map((attachment) => (
@@ -149,7 +149,7 @@ function FullscreenAttachments(data): React.ReactNode {
   );
 }
 
-export default function MessageComponent({ id }: { id: string }): React.ReactNode {
+export default function MessageComponent({ id }: { id: string }): JSX.Element {
   const [bodyMarkdown, updateBodyMarkdown] = useState<string>();
 
   const abortable = useRef<AbortController>();
@@ -185,17 +185,17 @@ export default function MessageComponent({ id }: { id: string }): React.ReactNod
     },
   });
 
-  const downloadEmail = async (url: string, openIn: EmailViewMedium) => {
+  const downloadEmail = async (openIn: EmailViewMedium) => {
     try {
-      const emailPath = await downloadMessage(url);
+      if (openIn == EmailViewMedium.Browser) {
+        const htmlPath = await createHTMLFile(message.id, message.html);
+        open(htmlPath);
+        return;
+      }
 
+      const emailPath = await downloadMessage(message.downloadUrl);
       if (openIn == EmailViewMedium.MailApp) open(emailPath as string);
       if (openIn == EmailViewMedium.Finder) showInFinder(emailPath as string);
-
-      if (openIn == EmailViewMedium.Browser) {
-        const htmlPath = await createHTMLFile(emailPath);
-        open(htmlPath);
-      }
     } catch (e) {
       showToast({
         style: Toast.Style.Failure,
@@ -283,17 +283,17 @@ export default function MessageComponent({ id }: { id: string }): React.ReactNod
                   <Action
                     title="Mail App"
                     icon={{ source: Icon.AppWindow }}
-                    onAction={() => downloadEmail(message.downloadUrl, EmailViewMedium.MailApp)}
+                    onAction={() => downloadEmail(EmailViewMedium.MailApp)}
                   />
                   <Action
                     title="Browser"
                     icon={{ source: Icon.Globe }}
-                    onAction={() => downloadEmail(message.downloadUrl, EmailViewMedium.Browser)}
+                    onAction={() => downloadEmail(EmailViewMedium.Browser)}
                   />
                   <Action
                     title="Download Email"
                     icon={{ source: Icon.Download }}
-                    onAction={() => downloadEmail(message.downloadUrl, EmailViewMedium.Finder)}
+                    onAction={() => downloadEmail(EmailViewMedium.Finder)}
                   />
                 </ActionPanel.Submenu>
               </ActionPanel>

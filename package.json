@@ -14,7 +14,7 @@
     {
       "name": "tempmail",
       "title": "Open Mailbox",
-      "description": "Open TempMail inbox to mange and view emails and addresses",
+      "description": "Open TempMail inbox to manage and view emails and addresses",
       "mode": "view"
     },
     {
@@ -25,10 +25,9 @@
     }
   ],
   "dependencies": {
-    "@raycast/api": "^1.63.0",
-    "@raycast/utils": "^1.10.1",
+    "@raycast/api": "^1.104.16",
+    "@raycast/utils": "^2.2.4",
     "axios": "^1.3.4",
-    "eml-parser": "^1.2.0",
     "moment": "^2.29.4",
     "node-html-markdown": "^1.3.0",
     "unique-names-generator": "^4.7.1"
