@@ -197,6 +197,19 @@ async function getIdentity(specificAuth?: Auth): Promise<Identity> {
   }
 }
 
+async function withTokenRetry<T>(fn: (token: string) => Promise<T>): Promise<T> {
+  try {
+    const { token } = await getIdentity();
+    return await fn(token);
+  } catch (e) {
+    if (e.message !== "Token Expired") {
+      throw e;
+    }
+    const { token } = await getIdentity();
+    return await fn(token);
+  }
+}
+
 export async function newAuth() {
   const rawAuth = await LocalStorage.getItem("authentication");
   if (rawAuth) {
@@ -248,22 +261,10 @@ export async function getMailboxData() {
     }
   }
 
-  let identity = await getIdentity();
-
   const expiryTime = (await LocalStorage.getItem("expiry_time")) as number | null;
   const auth: Auth = await getAuth();
 
-  let messages: Messages["hydra:member"];
-  try {
-    messages = await getGetMessages(identity.token);
-  } catch (e) {
-    if (e.message === "Token Expired") {
-      identity = await getIdentity();
-      messages = await getGetMessages(identity.token);
-    } else {
-      throw e;
-    }
-  }
+  const messages = await withTokenRetry((token) => getGetMessages(token));
 
   const expiryMessage = expiryTime
     ? `Expires after ${moment.duration(expiryTime * 60000).humanize()}`
@@ -275,47 +276,46 @@ export async function getMailboxData() {
 }
 
 async function readEmail(id: string) {
-  const { token } = await getIdentity();
-
-  try {
-    await axios.patch(
-      `https://api.mail.tm/messages/${id}`,
-      {
-        seen: true,
-      },
-      {
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/merge-patch+json" },
-      }
-    );
-  } catch (e) {
-    await handleAxiosError(e);
-  }
+  await withTokenRetry(async (token) => {
+    try {
+      await axios.patch(
+        `https://api.mail.tm/messages/${id}`,
+        {
+          seen: true,
+        },
+        {
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/merge-patch+json" },
+        }
+      );
+    } catch (e) {
+      await handleAxiosError(e);
+    }
+  });
 }
 
 export async function deleteEmail(id: string) {
-  const { token } = await getIdentity();
-
-  try {
-    await axios.delete(`https://api.mail.tm/messages/${id}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-  } catch (e) {
-    await handleAxiosError(e);
-  }
+  await withTokenRetry(async (token) => {
+    try {
+      await axios.delete(`https://api.mail.tm/messages/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch (e) {
+      await handleAxiosError(e);
+    }
+  });
 }
 
 export async function getMessage(id: string): Promise<Message> {
-  const { token } = await getIdentity();
-  let message: Message;
-
-  try {
-    const messageRes = await axios.get(`https://api.mail.tm/messages/${id}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    message = messageRes.data;
-  } catch (e) {
-    await handleAxiosError(e);
-  }
+  const message = await withTokenRetry(async (token) => {
+    try {
+      const messageRes = await axios.get(`https://api.mail.tm/messages/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      return messageRes.data;
+    } catch (e) {
+      await handleAxiosError(e);
+    }
+  });
 
   if (!message.seen) await readEmail(id);
 
@@ -339,8 +339,6 @@ export async function createHTMLFile(id: string, html: string[]): Promise<string
 }
 
 export async function downloadMessage(url: string): Promise<string> {
-  const { token } = await getIdentity();
-
   const dirPath = `${environment.supportPath}/temp/eml`;
   const filePath = `${dirPath}/${url.split("/")[2]}.eml`;
 
@@ -354,30 +352,32 @@ export async function downloadMessage(url: string): Promise<string> {
     return filePath;
   }
 
-  const file = fs.createWriteStream(filePath);
-  let response: AxiosResponse;
+  return withTokenRetry(async (token) => {
+    const file = fs.createWriteStream(filePath);
+    let response: AxiosResponse;
 
-  try {
-    response = await axios.get(`https://api.mail.tm${url}`, {
-      responseType: "stream",
-      headers: { Authorization: `Bearer ${token}` },
-    });
-  } catch (e) {
-    await handleAxiosError(e);
-  }
+    try {
+      response = await axios.get(`https://api.mail.tm${url}`, {
+        responseType: "stream",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch (e) {
+      await handleAxiosError(e);
+    }
 
-  return new Promise((resolve, reject) => {
-    response.data.pipe(file);
-    let error = null;
-    file.on("error", (err) => {
-      error = err;
-      file.close();
-      reject(err);
-    });
-    file.on("close", () => {
-      if (!error) {
-        resolve(filePath);
-      }
+    return new Promise<string>((resolve, reject) => {
+      response.data.pipe(file);
+      let error = null;
+      file.on("error", (err) => {
+        error = err;
+        file.close();
+        reject(err);
+      });
+      file.on("close", () => {
+        if (!error) {
+          resolve(filePath);
+        }
+      });
     });
   });
 }
@@ -393,8 +393,6 @@ export async function downloadAttachment({
   id: string;
   transferEncoding: string;
 }): Promise<string> {
-  const { token } = await getIdentity();
-
   const dirPath = `${environment.supportPath}/temp/attachments`;
   const filePath = `${dirPath}/${id}_${filename}`;
 
@@ -408,30 +406,32 @@ export async function downloadAttachment({
     return filePath;
   }
 
-  const file = fs.createWriteStream(filePath);
-  let response: AxiosResponse;
+  return withTokenRetry(async (token) => {
+    const file = fs.createWriteStream(filePath);
+    let response: AxiosResponse;
 
-  try {
-    response = await axios.get(`https://api.mail.tm${downloadUrl}`, {
-      responseType: "stream",
-      headers: { Authorization: `Bearer ${token}` },
-    });
-  } catch (e) {
-    await handleAxiosError(e);
-  }
+    try {
+      response = await axios.get(`https://api.mail.tm${downloadUrl}`, {
+        responseType: "stream",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch (e) {
+      await handleAxiosError(e);
+    }
 
-  return new Promise((resolve, reject) => {
-    response.data.pipe(file);
-    let error = null;
-    file.on("error", (err) => {
-      error = err;
-      file.close();
-      reject(err);
-    });
-    file.on("close", () => {
-      if (!error) {
-        resolve(filePath);
-      }
+    return new Promise<string>((resolve, reject) => {
+      response.data.pipe(file);
+      let error = null;
+      file.on("error", (err) => {
+        error = err;
+        file.close();
+        reject(err);
+      });
+      file.on("close", () => {
+        if (!error) {
+          resolve(filePath);
+        }
+      });
     });
   });
 }
