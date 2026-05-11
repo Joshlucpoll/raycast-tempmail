@@ -44,7 +44,7 @@ interface FormValues {
 }
 
 function NewCustomEmail({ update }) {
-  const abortable = useRef<AbortController>();
+  const abortable = useRef<AbortController>(undefined);
   const { isLoading, data, revalidate } = useCachedPromise(getDomains, [], {
     abortable,
     onError: (e) => {
@@ -131,14 +131,14 @@ function NewCustomEmail({ update }) {
           ))}
       </Form.Dropdown>
       <Form.Description title="" text=""></Form.Description>
-      <Form.Checkbox id="expiry" title="Expiry" label="Expires never" defaultValue={true}></Form.Checkbox>
+      <Form.Checkbox id="expiresNever" title="Expiry" label="Expires never" defaultValue={true}></Form.Checkbox>
     </Form>
   );
 }
 
 // Returns the main React component for a view command
 export default function Command() {
-  const abortable = useRef<AbortController>();
+  const abortable = useRef<AbortController>(undefined);
   const { isLoading, data, error, revalidate } = useCachedPromise(getMailboxData, [], {
     abortable,
     keepPreviousData: true,
@@ -243,7 +243,7 @@ export default function Command() {
                   actions={
                     <ActionPanel>
                       <Action.CopyToClipboard title="Copy Email Address to Clipboard" content={data.currentAddress} />
-                      <ActionPanel.Submenu title="Set Expiry..." icon={{ source: Icon.Hourglass }}>
+                      <ActionPanel.Submenu title="Set Expiry…" icon={{ source: Icon.Hourglass }}>
                         {[null, 5, 10, 30, 60, 720, 1440, 10080].map((minutes) => (
                           <Action
                             key={minutes}

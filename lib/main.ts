@@ -218,8 +218,12 @@ export async function newAuth() {
   }
 }
 
-export async function setNewExpiry(newExpiry?: number) {
-  await LocalStorage.setItem("expiry_time", newExpiry);
+export async function setNewExpiry(newExpiry?: number | null) {
+  if (newExpiry == null) {
+    await LocalStorage.removeItem("expiry_time");
+  } else {
+    await LocalStorage.setItem("expiry_time", newExpiry);
+  }
 }
 
 async function getGetMessages(token: string, page = 1): Promise<Messages["hydra:member"]> {

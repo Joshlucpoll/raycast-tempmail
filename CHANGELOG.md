@@ -3,6 +3,7 @@
 ## [Bug Fixes & Improvements] - {PR_MERGE_DATE}
 
 - Fixed images not loading in email preview — external images are now downloaded and cached locally with a fallback to the original URL
+- Fixed "expires never" not properly clearing the expiry timer
 - Fixed 401 token expiry silent retry targeting the wrong function — tokens now correctly re-authenticate before retrying the messages fetch
 - Fixed inbox message ordering being reversed for mailboxes with more than 30 messages
 - Fixed attachment filenames with multiple spaces breaking inline image rendering

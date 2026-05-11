@@ -1,5 +1,12 @@
 import { NodeHtmlMarkdown } from "node-html-markdown";
-import { createHTMLFile, downloadAttachment, downloadMessage, getMessage, preprocessHtmlImages, PreprocessResult } from "../lib/main";
+import {
+  createHTMLFile,
+  downloadAttachment,
+  downloadMessage,
+  getMessage,
+  preprocessHtmlImages,
+  PreprocessResult,
+} from "../lib/main";
 import { useRef, useState } from "react";
 import path from "path";
 import { useCachedPromise } from "@raycast/utils";
@@ -26,7 +33,7 @@ enum EmailViewMedium {
   Finder,
 }
 
-function FullscreenDetails(data: Message): JSX.Element {
+function FullscreenDetails(data: Message) {
   return (
     <List>
       <List.Section title="Received">
@@ -73,7 +80,7 @@ function FullscreenDetails(data: Message): JSX.Element {
       </List.Section>
       {["to", "cc", "bcc"].map((recipientType) => (
         <List.Section key={recipientType} title={recipientType.charAt(0).toUpperCase() + recipientType.slice(1)}>
-          {data[recipientType].map((recipient) => (
+          {data[recipientType].map((recipient: { name: string; address: string }) => (
             <List.Item
               key={recipient.address}
               title={recipient.address}
@@ -103,8 +110,8 @@ function FullscreenDetails(data: Message): JSX.Element {
 }
 
 function AttachmentItem({ attachment }) {
-  const abortable = useRef<AbortController>();
-  const { isLoading, data, revalidate } = useCachedPromise(downloadAttachment, [attachment], {
+  const abortable = useRef<AbortController>(undefined);
+  const { isLoading, data } = useCachedPromise(downloadAttachment, [attachment], {
     abortable,
     onError: (e) => {
       showToast({
@@ -134,11 +141,7 @@ function AttachmentItem({ attachment }) {
               {process.platform === "darwin" ? (
                 <Action.ShowInFinder title="Show in Finder" path={data} />
               ) : (
-                <Action
-                  title="Show in File Manager"
-                  icon={Icon.Finder}
-                  onAction={() => open(path.dirname(data))}
-                />
+                <Action title="Show in File Manager" icon={Icon.Finder} onAction={() => open(path.dirname(data))} />
               )}
             </>
           )}
@@ -148,25 +151,21 @@ function AttachmentItem({ attachment }) {
   );
 }
 
-function FullscreenAttachments(data): JSX.Element {
+function FullscreenAttachments(data: Message) {
   return (
     <Grid>
-      {data.attachments.map((attachment) => (
+      {data.attachments.map((attachment: Message["attachments"][number]) => (
         <AttachmentItem key={attachment.id} attachment={attachment}></AttachmentItem>
       ))}
     </Grid>
   );
 }
 
-export default function MessageComponent({ id }: { id: string }): JSX.Element {
+export default function MessageComponent({ id }: { id: string }) {
   const [bodyMarkdown, updateBodyMarkdown] = useState<string>();
 
-  const abortable = useRef<AbortController>();
-  const {
-    isLoading,
-    data: message,
-    revalidate,
-  } = useCachedPromise(getMessage, [id], {
+  const abortable = useRef<AbortController>(undefined);
+  const { isLoading, data: message } = useCachedPromise(getMessage, [id], {
     abortable,
     keepPreviousData: true,
     onData: (data) => {
@@ -241,7 +240,7 @@ export default function MessageComponent({ id }: { id: string }): JSX.Element {
 
       // replace inline attachments with images
       const regex = /(attachment:ATTACH\d{1,6})/g;
-      bodyMarkdown = bodyMarkdown.replace(regex, (match, attachmentString) => {
+      bodyMarkdown = bodyMarkdown.replace(regex, (_match, attachmentString) => {
         // attachmentString will contain the entire "attachment:ATTACH" substring along with the number
         const attachmentID = attachmentString.substring(11);
         const attachment = new_data.attachments.find((attch) => attch.id == attachmentID);
