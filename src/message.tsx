@@ -1,6 +1,7 @@
 import { NodeHtmlMarkdown } from "node-html-markdown";
-import { createHTMLFile, downloadAttachment, downloadMessage, getMessage } from "../lib/main";
+import { createHTMLFile, downloadAttachment, downloadMessage, getMessage, preprocessHtmlImages, PreprocessResult } from "../lib/main";
 import { useRef, useState } from "react";
+import path from "path";
 import { useCachedPromise } from "@raycast/utils";
 import {
   Action,
@@ -15,6 +16,7 @@ import {
   environment,
   showInFinder,
   open,
+  Clipboard,
 } from "@raycast/api";
 import moment from "moment";
 import { Message } from "../lib/types";
@@ -130,7 +132,15 @@ function AttachmentItem({ attachment }) {
           {data && (
             <>
               <Action.ToggleQuickLook title="Preview Attachment"></Action.ToggleQuickLook>
-              <Action.ShowInFinder title="View Attachment in Finder" path={data}></Action.ShowInFinder>
+              {process.platform === "darwin" ? (
+                <Action.ShowInFinder title="Show in Finder" path={data} />
+              ) : (
+                <Action
+                  title="Show in File Manager"
+                  icon={Icon.Finder}
+                  onAction={() => open(path.dirname(data))}
+                />
+              )}
             </>
           )}
         </ActionPanel>
@@ -161,20 +171,12 @@ export default function MessageComponent({ id }: { id: string }): JSX.Element {
     abortable,
     keepPreviousData: true,
     onData: (data) => {
-      updateBodyMarkdown(getMarkdown(data));
-      if (data.attachments) {
-        for (const attachment of data.attachments) {
-          try {
-            downloadAttachment(attachment);
-          } catch (e) {
-            showToast({
-              style: Toast.Style.Failure,
-              title: "Error downloading attachment",
-              message: e.message,
-            });
-          }
+      (async () => {
+        if (data.attachments?.length > 0) {
+          await Promise.allSettled(data.attachments.map((att) => downloadAttachment(att)));
         }
-      }
+        updateBodyMarkdown(await getMarkdown(data));
+      })();
     },
     onError: (e) => {
       showToast({
@@ -195,7 +197,13 @@ export default function MessageComponent({ id }: { id: string }): JSX.Element {
 
       const emailPath = await downloadMessage(message.downloadUrl);
       if (openIn == EmailViewMedium.MailApp) open(emailPath as string);
-      if (openIn == EmailViewMedium.Finder) showInFinder(emailPath as string);
+      if (openIn == EmailViewMedium.Finder) {
+        if (process.platform === "darwin") {
+          showInFinder(emailPath as string);
+        } else {
+          open(path.dirname(emailPath as string));
+        }
+      }
     } catch (e) {
       showToast({
         style: Toast.Style.Failure,
@@ -205,10 +213,14 @@ export default function MessageComponent({ id }: { id: string }): JSX.Element {
     }
   };
 
-  const getMarkdown = (new_data: Message) => {
+  const getMarkdown = async (new_data: Message) => {
     try {
       let html = new_data?.html[0];
       if (!html) throw new Error("No message body found");
+
+      // Download external images and replace src URLs with local file:// paths
+      const { html: processedHtml, localToOriginal }: PreprocessResult = await preprocessHtmlImages(html);
+      html = processedHtml;
 
       // remove table elements (they don't render properly in markdown)
       html = html.replace(/<table/g, "<div");
@@ -219,6 +231,15 @@ export default function MessageComponent({ id }: { id: string }): JSX.Element {
         keepDataImages: true,
       });
 
+      // Replace markdown image syntax with <img onerror> HTML so the renderer
+      // tries the local cached file first, then falls back to the original URL
+      bodyMarkdown = bodyMarkdown.replace(/!\[([^\]]*)\]\((file:\/\/[^)]+)\)/g, (_, alt, fileUri) => {
+        const originalUrl = localToOriginal.get(fileUri);
+        const escapedOriginal = originalUrl ? originalUrl.replace(/'/g, "\\'") : "";
+        const fallback = originalUrl ? ` onerror="this.onerror=null;this.src='${escapedOriginal}'"` : "";
+        return `<img src="${fileUri}" alt="${alt}"${fallback} />`;
+      });
+
       // replace inline attachments with images
       const regex = /(attachment:ATTACH\d{1,6})/g;
       bodyMarkdown = bodyMarkdown.replace(regex, (match, attachmentString) => {
@@ -226,10 +247,8 @@ export default function MessageComponent({ id }: { id: string }): JSX.Element {
         const attachmentID = attachmentString.substring(11);
         const attachment = new_data.attachments.find((attch) => attch.id == attachmentID);
 
-        return `${environment.supportPath}/temp/attachments/${attachment.id}_${attachment.filename}`.replaceAll(
-          " ",
-          "%20"
-        );
+        const filePath = `${environment.supportPath}/temp/attachments/${attachment.id}_${attachment.filename}`;
+        return encodeURI(`file://${filePath}`);
       });
 
       const header = new_data?.subject ? `# **${new_data.subject}**\n---\n\n` : "";
@@ -279,6 +298,11 @@ export default function MessageComponent({ id }: { id: string }): JSX.Element {
                 {bodyMarkdown && (
                   <Action.Push title="View Fullscreen" target={<Detail markdown={bodyMarkdown}></Detail>}></Action.Push>
                 )}
+                <Action
+                  title="Copy Markdown (Debug)"
+                  icon={{ source: Icon.Code }}
+                  onAction={() => Clipboard.copy(bodyMarkdown ?? "")}
+                />
                 <ActionPanel.Submenu title="View Email Externally" icon={{ source: Icon.Upload }}>
                   <Action
                     title="Mail App"

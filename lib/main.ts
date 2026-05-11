@@ -5,6 +5,83 @@ import axios, { AxiosResponse } from "axios";
 import moment from "moment";
 import { Auth, Domains, Identity, Message, Messages } from "./types";
 
+const IMAGE_EXTS = new Set(["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp"]);
+const CONTENT_TYPE_EXT: Record<string, string> = {
+  "image/jpeg": ".jpg",
+  "image/png": ".png",
+  "image/gif": ".gif",
+  "image/webp": ".webp",
+  "image/svg+xml": ".svg",
+  "image/bmp": ".bmp",
+};
+
+function extFromUrl(url: string): string {
+  const bare = url.split("?")[0];
+  const candidate = bare.split(".").pop()?.toLowerCase() ?? "";
+  return IMAGE_EXTS.has(candidate) ? `.${candidate}` : "";
+}
+
+export interface PreprocessResult {
+  html: string;
+  localToOriginal: Map<string, string>; // encoded file:// URI → original https URL
+}
+
+export async function preprocessHtmlImages(html: string): Promise<PreprocessResult> {
+  const dir = `${environment.supportPath}/temp/images`;
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+  const srcPattern = /src=(["'])(https?:\/\/[^"']+)\1/gi;
+  const uniqueUrls = [...new Set([...html.matchAll(srcPattern)].map((m) => m[2]))];
+
+  if (uniqueUrls.length === 0) return { html, localToOriginal: new Map() };
+
+  const urlToPath = new Map<string, string>(); // original URL → local file path
+
+  await Promise.allSettled(
+    uniqueUrls.map(async (url) => {
+      const base = Buffer.from(url).toString("base64").replace(/[/+=]/g, "_").slice(0, 80);
+      try {
+        let ext = extFromUrl(url);
+        const provisional = `${dir}/${base}${ext}`;
+
+        if (!fs.existsSync(provisional)) {
+          const response = await axios.get(url, {
+            responseType: "arraybuffer",
+            timeout: 10000,
+            headers: {
+              "User-Agent":
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+            },
+          });
+          if (!ext) {
+            const ct = (response.headers["content-type"] as string | undefined)?.split(";")[0].trim() ?? "";
+            ext = CONTENT_TYPE_EXT[ct] ?? ".jpg";
+          }
+          const filePath = `${dir}/${base}${ext}`;
+          fs.writeFileSync(filePath, Buffer.from(response.data));
+          urlToPath.set(url, filePath);
+        } else {
+          urlToPath.set(url, provisional);
+        }
+      } catch {
+        // download failed — original URL stays in the HTML as-is
+      }
+    })
+  );
+
+  const localToOriginal = new Map<string, string>();
+
+  const processedHtml = html.replace(srcPattern, (_, quote, url) => {
+    const localPath = urlToPath.get(url);
+    if (!localPath) return `src=${quote}${url}${quote}`;
+    const fileUri = encodeURI(`file://${localPath}`);
+    localToOriginal.set(fileUri, url);
+    return `src=${quote}${fileUri}${quote}`;
+  });
+
+  return { html: processedHtml, localToOriginal };
+}
+
 async function handleAxiosError(e) {
   if (e.response?.status == 401) {
     await LocalStorage.removeItem("identity");

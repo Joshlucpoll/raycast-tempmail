@@ -28,6 +28,7 @@ import {
 import MessageComponent from "./message";
 import { useCachedPromise, getAvatarIcon } from "@raycast/utils";
 import { useEffect, useRef, useState } from "react";
+import path from "path";
 import moment from "moment";
 
 enum EmailViewMedium {
@@ -170,7 +171,13 @@ export default function Command() {
 
       const emailPath = await downloadMessage(url);
       if (openIn == EmailViewMedium.MailApp) open(emailPath as string);
-      if (openIn == EmailViewMedium.Finder) showInFinder(emailPath as string);
+      if (openIn == EmailViewMedium.Finder) {
+        if (process.platform === "darwin") {
+          showInFinder(emailPath as string);
+        } else {
+          open(path.dirname(emailPath as string));
+        }
+      }
     } catch (e) {
       showToast({
         style: Toast.Style.Failure,
