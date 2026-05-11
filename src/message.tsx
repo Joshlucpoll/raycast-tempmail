@@ -16,7 +16,6 @@ import {
   environment,
   showInFinder,
   open,
-  Clipboard,
 } from "@raycast/api";
 import moment from "moment";
 import { Message } from "../lib/types";
@@ -298,11 +297,6 @@ export default function MessageComponent({ id }: { id: string }): JSX.Element {
                 {bodyMarkdown && (
                   <Action.Push title="View Fullscreen" target={<Detail markdown={bodyMarkdown}></Detail>}></Action.Push>
                 )}
-                <Action
-                  title="Copy Markdown (Debug)"
-                  icon={{ source: Icon.Code }}
-                  onAction={() => Clipboard.copy(bodyMarkdown ?? "")}
-                />
                 <ActionPanel.Submenu title="View Email Externally" icon={{ source: Icon.Upload }}>
                   <Action
                     title="Mail App"
